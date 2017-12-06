@@ -166,7 +166,7 @@ module.exports = class CocoRouter extends Backbone.Router
     'play/web-dev-level/:levelID/:sessionID': (levelID, sessionID) ->
       @navigate("play/web-dev-level/#{sessionID}", { trigger: true, replace: true })
     'play/spectate/:levelID': go('play/SpectateView')
-    'play/:map': go('play/CampaignView', { redirectTeachers: true })
+    'play/:map': go('play/CampaignView')
 
     'premium': go('PremiumFeaturesView')
     'Premium': go('PremiumFeaturesView')
@@ -267,7 +267,7 @@ module.exports = class CocoRouter extends Backbone.Router
         @mergeView(view)
       else
         @openView(view)
-    
+
       @viewLoad.setView(view)
       @viewLoad.record()
     .catch (err) ->
@@ -309,6 +309,7 @@ module.exports = class CocoRouter extends Backbone.Router
       return document.location.reload()
     window.currentModal?.hide?()
     return unless window.currentView?
+    window.currentView.modalClosed()
     window.currentView.destroy()
     $('.popover').popover 'hide'
     $('#flying-focus').css({top: 0, left: 0}) # otherwise it might make the page unnecessarily tall

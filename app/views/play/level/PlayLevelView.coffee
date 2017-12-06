@@ -53,6 +53,7 @@ WebSurfaceView = require './WebSurfaceView'
 SpellPaletteView = require './tome/SpellPaletteView'
 
 require 'lib/game-libraries'
+window.Box2D = require('exports-loader?Box2D!vendor/scripts/Box2dWeb-2.1.a.3')
 
 PROFILE_ME = false
 
@@ -129,7 +130,7 @@ module.exports = class PlayLevelView extends RootView
     if @isEditorPreview
       @supermodel.shouldSaveBackups = (model) ->  # Make sure to load possibly changed things from localStorage.
         model.constructor.className in ['Level', 'LevelComponent', 'LevelSystem', 'ThangType']
-      f = => @load() unless @levelLoader  # Wait to see if it's just given to us through setLevel.
+      f = => @load?() unless @levelLoader  # Wait to see if it's just given to us through setLevel.
       setTimeout f, 100
     else
       @load()
@@ -160,7 +161,7 @@ module.exports = class PlayLevelView extends RootView
   onLevelLoaded: (e) ->
     return if @destroyed
     if _.all([
-      (me.isStudent() or me.isTeacher()),
+      ((me.isStudent() or me.isTeacher()) and !application.getHocCampaign()),
       not @courseID,
       not e.level.isType('course-ladder')
 
@@ -384,7 +385,7 @@ module.exports = class PlayLevelView extends RootView
         "right-hand": "544d86318494308424f564e8"
       }}
     else if e.level.get('slug') in ['escort-duty']
-      potionmaster = '52fd1524c7e6cf99160e7bc9'
+      potionmaster = '52e9adf7427172ae56002172'
       e.session.set 'heroConfig', {"thangType":potionmaster,"inventory":{
         "eyes": "546941fda2b1f53ce794441d",
         "feet": "546d4d8e9df4a17d0d449acd",
@@ -399,7 +400,7 @@ module.exports = class PlayLevelView extends RootView
         "right-hand": "54eab92b2b7506e891ca720a",
         "waist": "54694af7a2b1f53ce7944441",
         "right-ring": "54692d2aa2b1f53ce794438f",
-        "pet": "5744e3683af6bf590cd27371"
+        "pet": "57586f0a22179b2800efda37"
       }}
 
 
@@ -482,7 +483,7 @@ module.exports = class PlayLevelView extends RootView
     console.log 'PlayLevelView: level started'
     @loadingView.showReady()
     @trackLevelLoadEnd()
-    if window.currentModal and not window.currentModal.destroyed and [VictoryModal, CourseVictoryModal].indexOf(window.currentModal.constructor) is -1
+    if window.currentModal and not window.currentModal.destroyed and [VictoryModal, CourseVictoryModal, HeroVictoryModal].indexOf(window.currentModal.constructor) is -1
       return Backbone.Mediator.subscribeOnce 'modal:closed', @onLevelStarted, @
     @surface?.showLevel()
     Backbone.Mediator.publish 'level:set-time', time: 0
@@ -509,7 +510,7 @@ module.exports = class PlayLevelView extends RootView
     _.delay (=> @perhapsStartSimulating?()), 10 * 1000
 
   onSetVolume: (e) ->
-    createjs.Sound.setVolume(if e.volume is 1 then 0.6 else e.volume)  # Quieter for now until individual sound FX controls work again.
+    createjs.Sound.volume = if e.volume is 1 then 0.6 else e.volume  # Quieter for now until individual sound FX controls work again.
     if e.volume and not @ambientSound
       @playAmbientSound()
 
