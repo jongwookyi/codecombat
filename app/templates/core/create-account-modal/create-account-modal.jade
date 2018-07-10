@@ -32,6 +32,8 @@ block modal-body
       #choose-account-type-view
     when 'segment-check'
       #segment-check-view
+    when 'eu-confirmation'
+      #eu-confirmation-view
     when 'basic-info'
       #basic-info-view
     when 'coppa-deny'
@@ -57,7 +59,7 @@ block modal-footer
 mixin modal-footer-content
   if view.signupState.get('screen') !== 'confirmation'
     .modal-footer-content
-      .small-details
+      .small-details.rtl-allowed
         span.spr(data-i18n="signup.login_switch")
         a.login-link
           span(data-i18n="signup.sign_in")

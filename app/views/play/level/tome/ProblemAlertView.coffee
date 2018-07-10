@@ -9,8 +9,11 @@ module.exports = class ProblemAlertView extends CocoView
   className: 'problem-alert'
   template: template
   duckImages: [
-    '/images/pages/play/duck_anya.png'
-    '/images/pages/play/duck_tharin.png'
+    '/images/pages/play/duck_alejandro.png'
+    '/images/pages/play/duck_anya2.png'
+    '/images/pages/play/duck_ida.png'
+    '/images/pages/play/duck_okar.png'
+    '/images/pages/play/duck_tharin2.png'
   ]
 
   subscriptions:
@@ -65,7 +68,7 @@ module.exports = class ProblemAlertView extends CocoView
       @hint = format @problem.hint
 
   onShowProblemAlert: (data) ->
-    return unless $('#code-area').is(":visible")
+    return unless $('#code-area').is(":visible") or @level.isType('game-dev')
     if @problem?
       if @$el.hasClass "alert-#{@problem.level}"
         @$el.removeClass "alert-#{@problem.level}"

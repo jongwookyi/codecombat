@@ -40,6 +40,8 @@ module.exports = class CocoRouter extends Backbone.Router
     'account/invoices': go('account/InvoicesView')
     'account/prepaid': go('account/PrepaidView')
 
+    'licensor': go('LicensorView')
+
     'admin': go('admin/MainAdminView')
     'admin/clas': go('admin/CLAsView')
     'admin/classroom-content': go('admin/AdminClassroomContentView')
@@ -53,6 +55,7 @@ module.exports = class CocoRouter extends Backbone.Router
     'admin/level-sessions': go('admin/LevelSessionsView')
     'admin/school-counts': go('admin/SchoolCountsView')
     'admin/school-licenses': go('admin/SchoolLicensesView')
+    'admin/sub-cancellations': go('admin/AdminSubCancellationsView')
     'admin/base': go('admin/BaseView')
     'admin/demo-requests': go('admin/DemoRequestsView')
     'admin/trial-requests': go('admin/TrialRequestsView')
@@ -63,6 +66,8 @@ module.exports = class CocoRouter extends Backbone.Router
     'admin/outcomes-report-result': go('admin/OutcomeReportResultView')
     'admin/outcomes-report': go('admin/OutcomesReportView')
 
+    'apcsp(/*subpath)': go('teachers/DynamicAPCSPView')
+
     'artisans': go('artisans/ArtisansView')
 
     'artisans/level-tasks': go('artisans/LevelTasksView')
@@ -72,6 +77,9 @@ module.exports = class CocoRouter extends Backbone.Router
     'artisans/level-guides': go('artisans/LevelGuidesView')
     'artisans/student-solutions': go('artisans/StudentSolutionsView')
     'artisans/tag-test': go('artisans/TagTestView')
+    'artisans/bulk-level-editor': go('artisans/BulkLevelEditView')
+    'artisans/sandbox': go('artisans/SandboxView')
+    'artisans/bulk-level-editor/:campaign': go('artisans/BulkLevelEditView')
 
     'careers': => window.location.href = 'https://jobs.lever.co/codecombat'
     'Careers': => window.location.href = 'https://jobs.lever.co/codecombat'
@@ -102,8 +110,8 @@ module.exports = class CocoRouter extends Backbone.Router
     'courses/:courseID/:courseInstanceID': -> @navigate("/students/#{arguments[0]}/#{arguments[1]}", {trigger: true, replace: true}) # Redirected 9/3/16
 
     'db/*path': 'routeToServer'
-    'docs/components': go('docs/ComponentsDocumentationView')
-    'docs/systems': go('docs/SystemsDocumentationView')
+    'docs/components': go('editor/docs/ComponentsDocumentationView')
+    'docs/systems': go('editor/docs/SystemsDocumentationView')
 
     'editor': go('CommunityView')
 
@@ -119,13 +127,14 @@ module.exports = class CocoRouter extends Backbone.Router
     'editor/campaign/:campaignID': go('editor/campaign/CampaignEditorView')
     'editor/poll': go('editor/poll/PollSearchView')
     'editor/poll/:articleID': go('editor/poll/PollEditView')
-    'editor/thang-tasks': go('editor/ThangTasksView')
     'editor/verifier': go('editor/verifier/VerifierView')
     'editor/verifier/:levelID': go('editor/verifier/VerifierView')
     'editor/i18n-verifier/:levelID': go('editor/verifier/i18nVerifierView')
     'editor/i18n-verifier': go('editor/verifier/i18nVerifierView')
     'editor/course': go('editor/course/CourseSearchView')
     'editor/course/:courseID': go('editor/course/CourseEditView')
+
+    'etc': redirect('/teachers/demo')
 
     'file/*path': 'routeToServer'
 
@@ -143,6 +152,7 @@ module.exports = class CocoRouter extends Backbone.Router
     'i18n/poll/:handle': go('i18n/I18NEditPollView')
     'i18n/course/:handle': go('i18n/I18NEditCourseView')
     'i18n/product/:handle': go('i18n/I18NEditProductView')
+    'i18n/article/:handle': go('i18n/I18NEditArticleView')
 
     'identify': go('user/IdentifyView')
     'il-signup': go('account/IsraelSignupView')
@@ -150,6 +160,8 @@ module.exports = class CocoRouter extends Backbone.Router
     'legal': go('LegalView')
 
     'logout': 'logout'
+
+    'minigames/conditionals': go('minigames/ConditionalMinigameView')
 
     'paypal/subscribe-callback': go('play/CampaignView')
     'paypal/cancel-callback': go('account/SubscriptionView')
@@ -179,11 +191,10 @@ module.exports = class CocoRouter extends Backbone.Router
     'seen': go('HomeView')
     'SEEN': go('HomeView')
 
-    'sunburst': go('HomeView')
-
     'students': go('courses/CoursesView', { redirectTeachers: true })
     'students/update-account': go('courses/CoursesUpdateAccountView', { redirectTeachers: true })
     'students/project-gallery/:courseInstanceID': go('courses/ProjectGalleryView')
+    'students/assessments/:classroomID': go('courses/StudentAssessmentsView')
     'students/:classroomID': go('courses/ClassroomView', { redirectTeachers: true, studentsOnly: true })
     'students/:courseID/:courseInstanceID': go('courses/CourseDetailsView', { redirectTeachers: true, studentsOnly: true })
     'teachers': redirect('/teachers/classes')
@@ -213,7 +224,11 @@ module.exports = class CocoRouter extends Backbone.Router
     'test(/*subpath)': go('TestView')
 
     'user/:slugOrID': go('user/MainUserView')
+    'certificates': go('user/CertificatesView')
+    'certificates/:slugOrID': go('user/CertificatesView')
+
     'user/:userID/verify/:verificationCode': go('user/EmailVerifiedView')
+    'user/:userID/opt-in/:verificationCode': go('user/UserOptInView')
 
     '*name/': 'removeTrailingSlash'
     '*name': go('NotFoundView')
@@ -254,7 +269,7 @@ module.exports = class CocoRouter extends Backbone.Router
 
     path = "views/#{path}" if not _.string.startsWith(path, 'views/')
     Promise.all([
-      dynamicRequire(path), # Load the view file
+      dynamicRequire[path](), # Load the view file
       # The locale load is already initialized by `application`, just need the promise
       locale.load(me.get('preferredLanguage', true))
     ]).then ([ViewClass]) =>
@@ -342,7 +357,7 @@ module.exports = class CocoRouter extends Backbone.Router
   onNavigate: (e, recursive=false) ->
     @viewLoad = new ViewLoadTimer() unless recursive
     if _.isString e.viewClass
-      dynamicRequire(e.viewClass).then (viewClass) =>
+      dynamicRequire[e.viewClass]().then (viewClass) =>
         @onNavigate(_.assign({}, e, {viewClass}), true)
       return
 

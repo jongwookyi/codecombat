@@ -383,13 +383,13 @@ describe 'DELETE /db/course_instance/:id/members', ->
       done()
 
 
-describe 'GET /db/course_instance/:handle/levels/:levelOriginal/next', ->
+describe 'GET /db/course_instance/:handle/levels/:levelOriginal/sessions/:sessionID/next', ->
 
   beforeEach utils.wrap (done) ->
     yield utils.clearModels [User, Classroom, Course, Level, Campaign]
     admin = yield utils.initAdmin()
     yield utils.loginUser(admin)
-    @teacher = yield utils.initUser({role: 'teacher'})
+    @teacher = yield utils.initUser({role: 'teacher', permissions: ['assessments']})
 
     levelJSON = { name: 'A', permissions: [{access: 'owner', target: admin.id}], type: 'course' }
     [res, body] = yield request.postAsync({uri: getURL('/db/level'), json: levelJSON})
@@ -404,6 +404,12 @@ describe 'GET /db/course_instance/:handle/levels/:levelOriginal/next', ->
       state: complete: true
       codeLanguage: 'javascript'
     yield @sessionA.save()
+
+    levelJSON = { name: 'A-assessment', assessment: true, permissions: [{access: 'owner', target: admin.id}], type: 'course' }
+    [res, body] = yield request.postAsync({uri: getURL('/db/level'), json: levelJSON})
+    expect(res.statusCode).toBe(200)
+    @assessmentA = yield Level.findById(res.body._id)
+    paredAssessmentA = _.pick(res.body, 'name', 'original', 'type', 'assessment')
 
     levelJSON = { name: 'B', permissions: [{access: 'owner', target: admin.id}], type: 'course' }
     [res, body] = yield request.postAsync({uri: getURL('/db/level'), json: levelJSON})
@@ -434,11 +440,12 @@ describe 'GET /db/course_instance/:handle/levels/:levelOriginal/next', ->
       creator: @teacher.id
       level: original: @levelJSPrimer1.get('original').toString()
       permissions: simplePermissions
-      codeLanguage: 'python'
+      codeLanguage: 'javascript'
     yield @sessionJSPrimer1.save()
 
     campaignJSONA = { name: 'Campaign A', levels: {} }
     campaignJSONA.levels[paredLevelA.original] = paredLevelA
+    campaignJSONA.levels[paredAssessmentA.original] = paredAssessmentA
     campaignJSONA.levels[paredLevelB.original] = paredLevelB
     campaignJSONA.levels[paredLevelJSPrimer1.original] = paredLevelJSPrimer1
     [res, body] = yield request.postAsync({uri: getURL('/db/campaign'), json: campaignJSONA})
@@ -480,16 +487,18 @@ describe 'GET /db/course_instance/:handle/levels/:levelOriginal/next', ->
 
       done()
 
-    it 'returns the next level for the course in the linked classroom', utils.wrap (done) ->
+    it 'returns the next level and assessment for the course in the linked classroom', utils.wrap (done) ->
       [res, body] = yield request.getAsync { uri: utils.getURL("/db/course_instance/#{@courseInstanceA.id}/levels/#{@levelA.id}/sessions/#{@sessionA.id}/next"), json: true }
       expect(res.statusCode).toBe(200)
-      expect(res.body.original).toBe(@levelB.original.toString())
+      expect(res.body.level.original).toBe(@levelB.original.toString())
+      expect(res.body.assessment.original).toBe(@assessmentA.original.toString())
       done()
 
     it 'returns empty object if the given level is the last level in its course', utils.wrap (done) ->
       [res, body] = yield request.getAsync { uri: utils.getURL("/db/course_instance/#{@courseInstanceA.id}/levels/#{@levelB.id}/sessions/#{@sessionB.id}/next"), json: true }
       expect(res.statusCode).toBe(200)
-      expect(res.body).toEqual({})
+      expect(res.body.level).toEqual({})
+      expect(res.body.assessment).toEqual({})
       done()
 
     it 'returns 404 if the given level is not in the course instance\'s course', utils.wrap (done) ->
@@ -531,16 +540,15 @@ describe 'GET /db/course_instance/:handle/levels/:levelOriginal/next', ->
     it 'returns the next level for the course in the linked classroom', utils.wrap (done) ->
       [res, body] = yield request.getAsync { uri: utils.getURL("/db/course_instance/#{@courseInstanceA.id}/levels/#{@levelB.id}/sessions/#{@sessionB.id}/next"), json: true }
       expect(res.statusCode).toBe(200)
-      expect(res.body.original).toBe(@levelJSPrimer1.original.toString())
+      expect(res.body.level.original).toBe(@levelJSPrimer1.original.toString())
       done()
 
     it 'returns empty object if the given level is the last level in its course', utils.wrap (done) ->
       [res, body] = yield request.getAsync { uri: utils.getURL("/db/course_instance/#{@courseInstanceA.id}/levels/#{@levelJSPrimer1.id}/sessions/#{@sessionJSPrimer1.id}/next"), json: true }
       expect(res.statusCode).toBe(200)
-      expect(res.body).toEqual({})
+      expect(res.body.level).toEqual({})
       done()
 
-describe 'courseInstances.fetchNextLevel', ->
   describe 'when finishing ladder past practice threshold and practice available', ->
     beforeEach utils.wrap (done) ->
       yield utils.clearModels [User, Classroom, Course, Level, Campaign]
@@ -615,7 +623,7 @@ describe 'courseInstances.fetchNextLevel', ->
     it 'practice level not returned', utils.wrap (done) ->
       [res, body] = yield request.getAsync { uri: utils.getURL("/db/course_instance/#{@courseInstanceA._id}/levels/#{@levelC._id}/sessions/#{@sessionC._id}/next"), json: true }
       expect(res.statusCode).toBe(200)
-      expect(res.body).toEqual({})
+      expect(res.body.level).toEqual({})
       done()
 
 describe 'GET /db/course_instance/:handle/classroom', ->
@@ -729,7 +737,7 @@ describe 'POST /db/course_instance/-/recent', ->
     expect(res.statusCode).toBe(403)
     done()
 
-describe 'GET /db/course_instance/:handle/my-course-level-sessions', ->
+describe 'GET /db/course_instance/:handle/course-level-sessions/:userID', ->
 
   beforeEach utils.wrap (done) ->
     yield utils.clearModels([CourseInstance, Course, User, Classroom, Campaign, Level])
@@ -760,7 +768,7 @@ describe 'GET /db/course_instance/:handle/my-course-level-sessions', ->
     done()
 
   it 'returns all sessions for levels in that course for that classroom', utils.wrap (done) ->
-    url = utils.getURL("/db/course_instance/#{@courseInstance.id}/my-course-level-sessions")
+    url = utils.getURL("/db/course_instance/#{@courseInstance.id}/course-level-sessions/#{@student.id}")
     yield utils.loginUser(@student)
     [res, body] = yield request.getAsync({url, json: true})
     expect(res.statusCode).toBe(200)
@@ -795,7 +803,7 @@ describe 'GET /db/course_instance/:handle/peer-projects', ->
     @session2 = yield utils.makeLevelSession({published: true, codeLanguage: 'javascript'}, {level: @projectLevel, creator: @student2})
     @session3 = yield utils.makeLevelSession({published: true, codeLanguage: 'javascript'}, {level: @projectLevel2, creator: @student2})
     otherLevel = yield utils.makeLevel({type: 'course'})
-    
+
     # Other course instance which should be ignored
     yield utils.loginUser(admin)
     @projectLevel3 = yield utils.makeLevel({type: 'course', shareable: 'project'})
@@ -827,7 +835,7 @@ describe 'GET /db/course_instance/:handle/peer-projects', ->
     expect(_.contains(ids, @session.id)).toBe(true)
     expect(_.contains(ids, @session2.id)).toBe(true)
     expect(_.contains(ids, @session3.id)).toBe(true)
-    
+
   it 'returns 403 if you request a course instance that you are not a member or owner of', utils.wrap ->
     url = utils.getURL("/db/course_instance/#{@courseInstance.id}/peer-projects")
     yield utils.loginUser(@otherUser)

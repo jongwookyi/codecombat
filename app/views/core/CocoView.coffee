@@ -8,7 +8,6 @@ auth = require 'core/auth'
 ViewVisibleTimer = require 'core/ViewVisibleTimer'
 storage = require 'core/storage'
 
-lastToggleModalCall = 0
 visibleModal = null
 waitingModal = null
 classCount = 0
@@ -229,7 +228,8 @@ module.exports = class CocoView extends Backbone.View
   # Error handling for loading
   onResourceLoadFailed: (e) ->
     r = e.resource
-    @stopListening @supermodel
+    if r.value
+      @stopListening @supermodel
     return if r.jqxhr?.status is 402 # payment-required failures are handled separately
     @showError(r.jqxhr)
 
@@ -265,13 +265,6 @@ module.exports = class CocoView extends Backbone.View
     auth.logoutUser()
 
   # Modals
-
-  @lastToggleModalCall = 0
-
-  toggleModal: (e) ->
-    if $(e.currentTarget).prop('target') is '_blank'
-      return true
-    # No longer try to dynamically require modal views. Require and open them in the view that wants to.
 
   openModalView: (modalView, softly=false) ->
     return if waitingModal # can only have one waiting at once
@@ -512,9 +505,7 @@ module.exports = class CocoView extends Backbone.View
     ua = navigator.userAgent or navigator.vendor or window.opera
     return mobileRELong.test(ua) or mobileREShort.test(ua.substr(0, 4))
 
-  isIE: ->
-    # http://stackoverflow.com/questions/19999388/jquery-check-if-user-is-using-ie
-    navigator.userAgent.indexOf('MSIE') > 0 or !!navigator.userAgent.match(/Trident.*rv\:11\./)
+  isIE: utils.isIE
 
   isMac: ->
     navigator.platform.toUpperCase().indexOf('MAC') isnt -1

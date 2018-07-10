@@ -7,6 +7,7 @@ utils = require '../lib/utils'
 co = require 'co'
 Campaign = require './Campaign'
 Course = require './Course'
+database = require '../commons/database'
 
 ClassroomSchema = new mongoose.Schema {}, {strict: false, minimize: false, read:config.mongo.readpref}
 
@@ -38,6 +39,18 @@ ClassroomSchema.statics.generateNewCode = (done) ->
       tryCode()
   tryCode()
 
+ClassroomSchema.statics.create = co.wrap (owner, req) ->
+  delighted = require '../delighted'
+  classroom = database.initDoc(req, Classroom)
+  classroom.set 'ownerID', owner._id
+  classroom.set 'members', []
+  database.assignBody(req, classroom)
+  yield classroom.setUpdatedCourses({isAdmin: owner?.isAdmin(), addNewCoursesOnly: false})
+  database.validateDoc(classroom)
+  classroom = yield classroom.save()
+  yield delighted.checkTriggerClassroomCreated(owner)
+  classroom
+
 ClassroomSchema.pre('save', (next) ->
   return next() if @get('code')
   Classroom.generateNewCode (code, codeCamel) =>
@@ -52,6 +65,19 @@ ClassroomSchema.methods.isOwner = (userID) ->
 ClassroomSchema.methods.isMember = (userID) ->
   return _.any @get('members') or [], (memberID) -> userID.equals(memberID)
 
+levelPropsToPick = [
+  'type',
+  'slug',
+  'name',
+  'assessment',
+  'assessmentPlacement'
+  'practice',
+  'practiceThresholdMinutes',
+  'primerLanguage',
+  'shareable',
+  'position'
+]
+
 ClassroomSchema.methods.generateCoursesData = co.wrap ({isAdmin}) ->
   # Helper function for generating the latest version of courses
   isAdmin ?= false
@@ -65,23 +91,15 @@ ClassroomSchema.methods.generateCoursesData = co.wrap ({isAdmin}) ->
     campaignMap[campaign.id] = campaign
   classLanguage = @get('aceConfig')?.language
   coursesData = []
+  updated = new Date().toISOString()
   for course in courses
-    courseData = { _id: course._id, levels: [] }
+    courseData = { _id: course._id, levels: [], updated }
     campaign = campaignMap[course.get('campaignID').toString()]
     levels = _.sortBy(_.values(campaign.get('levels')), 'campaignIndex')
     for level in levels
       continue if classLanguage and level.primerLanguage is classLanguage
       levelData = { original: mongoose.Types.ObjectId(level.original) }
-      _.extend(levelData, _.pick(level, 
-        'type',
-        'slug',
-        'name', 
-        'practice', 
-        'practiceThresholdMinutes',
-        'primerLanguage',
-        'shareable',
-        'position'
-      ))
+      _.extend(levelData, _.pick(level, levelPropsToPick))
       courseData.levels.push(levelData)
     coursesData.push(courseData)
   coursesData
@@ -96,7 +114,7 @@ ClassroomSchema.methods.generateCourseData = co.wrap ({courseId}) ->
   for level in levels
     continue if classLanguage and level.primerLanguage is classLanguage
     levelData = { original: mongoose.Types.ObjectId(level.original) }
-    _.extend(levelData, _.pick(level, 'type', 'slug', 'name', 'practice', 'practiceThresholdMinutes', 'primerLanguage', 'shareable'))
+    _.extend(levelData, _.pick(level, levelPropsToPick))
     courseData.levels.push(levelData)
   courseData
 
@@ -158,15 +176,16 @@ ClassroomSchema.methods.fetchSessionsForMembers = co.wrap (members) ->
       memberCoursesMap[userID.toHexString()] ?= []
       memberCoursesMap[userID.toHexString()].push(courseInstance.courseID)
   dbqs = []
-  select = 'state.complete level creator playtime changed created dateFirstCompleted submitted published'
+  select = 'state.complete state.goalStates level creator playtime changed created dateFirstCompleted submitted published code codeConcepts'
+  $or = []
   for member in members
-    $or = []
     for courseID in memberCoursesMap[member.toHexString()] ? []
       for subQuery in courseLevelsMap[courseID.toHexString()] ? []
         $or.push(_.assign({creator: member.toHexString()}, subQuery))
-    if $or.length
-      query = { $or }
-      dbqs.push(LevelSession.find(query).select(select).lean().exec())
+  while $or.length
+    chunk = $or.splice(0, 50)
+    break if chunk.length is 0
+    dbqs.push(LevelSession.find({ $or: chunk }).setOptions({maxTimeMS:1000}).select(select).lean().exec())
   results = yield dbqs
   return _.flatten(results)
 

@@ -356,8 +356,27 @@ module.exports = class Angel extends CocoClass
         return unless continuing
       if world.indefiniteLength and i is world.totalFrames - 1
         ++world.totalFrames
-      frame = world.getFrame i++  # TODO: better handle non-user-code errors and infinite-loops
+      try
+        frame = world.getFrame i++
+      catch error
+        @handleWorldError world, error
+        @reportLoadError()
+        break
+      if error = (world.unhandledRuntimeErrors ? [])[0]
+        @handleWorldError world, error
+        break  # We quit on the first one
     @finishSimulationSync work
+
+  handleWorldError: (world, error) ->
+    if error.isUserCodeProblem
+      @publishGodEvent 'user-code-problem', problem: error
+    else
+      console.error 'Non-UserCodeError:', error.toString() + '\n' + error.stack or error.stackTrace
+      problem = type: 'runtime', level: 'error', message: error.toString()
+      @publishGodEvent 'non-user-code-problem', problem: problem
+    # End the world immediately
+    world.indefiniteLength = false
+    world.totalFrames = world.frames.length
 
   streamFrameSync: (work) ->
     goalStates = work.world.goalManager.getGoalStates()

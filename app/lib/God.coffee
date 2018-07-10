@@ -83,7 +83,7 @@ module.exports = class God extends CocoClass
 
     # We only want one world being simulated, so we abort other angels, unless we had one preloading this very code.
     hadPreloader = false
-    for angel in @angelsShare.busyAngels
+    for angel in @angelsShare.busyAngels.slice()
       isPreloading = angel.running and angel.work.preload and _.isEqual angel.work.userCodeMap, userCodeMap, (a, b) ->
         return a.raw is b.raw if a?.raw? and b?.raw?
         undefined  # Let default equality test suffice.
@@ -114,6 +114,7 @@ module.exports = class God extends CocoClass
       justBegin
       indefiniteLength: @indefiniteLength and realTime
       keyValueDb
+      language: me.get('preferredLanguage', true)  # TODO: get target user's language if we're simulating some other user's session?
     }
     @angelsShare.workQueue.push work
     angel.workIfIdle() for angel in @angelsShare.angels

@@ -7,7 +7,6 @@ TrialRequest = require '../../../server/models/TrialRequest'
 Prepaid = require '../../../server/models/Prepaid'
 request = require '../request'
 delighted = require '../../../server/delighted'
-sendwithus = require '../../../server/sendwithus'
 
 fixture = {
   type: 'subscription'
@@ -21,7 +20,7 @@ fixture = {
 }
 
 describe 'POST /db/trial.request', ->
-  
+
   beforeEach utils.wrap (done) ->
     yield utils.clearModels([User, TrialRequest])
     spyOn(delighted, 'postPeople')
@@ -91,22 +90,7 @@ describe 'POST /db/trial.request', ->
     count = yield TrialRequest.count()
     expect(count).toBe(1)
     done()
-    
-  it 'sends a sunburst email if the trial request has a marketingReferrer property of "sunburst"', utils.wrap (done) ->
-    @user = yield utils.initUser()
-    yield utils.loginUser(@user)
-    json = _.cloneDeep(fixture)
-    json.properties.marketingReferrer = 'sunburst'
-    spyOn(sendwithus.api, 'send')
-    [res, body] = yield request.postAsync(getURL('/db/trial.request'), { json })
-    expect(res.statusCode).toBe(201)
-    expect(body._id).toBeDefined()
-    @trialRequest = yield TrialRequest.findById(body._id)
-    expect(@trialRequest.get('properties').marketingReferrer).toBe('sunburst')
-    expect(sendwithus.api.send.calls.count()).toBe(1)
-    expect(sendwithus.api.send.calls.argsFor(0)[0].email_id).toBe(sendwithus.templates.sunburst_referral)
-    done()
-    
+
 describe 'GET /db/trial.request', ->
 
   beforeEach utils.wrap (done) ->
@@ -161,7 +145,7 @@ describe 'PUT /db/trial.request/:handle', ->
 
   beforeEach utils.wrap (done) ->
     yield utils.clearModels([User, TrialRequest])
-    @user = yield utils.initUser()
+    @user = yield utils.initUser({country: 'united-states'})
     yield utils.loginUser(@user)
     fixture.properties.email = @user.get('email')
     [res, body] = yield request.postAsync(getURL('/db/trial.request'), { json: fixture })

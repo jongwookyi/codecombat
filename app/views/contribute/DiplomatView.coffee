@@ -62,7 +62,7 @@ module.exports = class DiplomatView extends ContributeClassView
     'pt-BR': ['Bia41', 'Gutenberg Barros', 'Kieizroe', 'Matthew Burt', 'brunoporto', 'cassiocardoso', 'jklemm', 'Arkhad']        # português do Brasil, Portuguese (Brazil)
     'pt-PT': ['Imperadeiro98', 'Matthew Burt', 'ProgramadorLucas', 'ReiDuKuduro', 'batista', 'gutierri']        # Português (Portugal), Portuguese (Portugal)
     pl: ['Anon', 'Kacper Ciepielewski', 'TigroTigro', 'kvasnyk', 'CatSkald']             # język polski, Polish
-    it: ['AlessioPaternoster', 'flauta', 'Atomk', 'Lionhear7']              # italiano, Italian
+    it: ['flauta', 'Atomk', 'Lionhear7']              # italiano, Italian
     tr: ['Nazım Gediz Aydındoğmuş', 'cobaimelan', 'gediz', 'ilisyus', 'wakeup']             # Türkçe, Turkish
     nl: []        # Nederlands, Dutch
     'nl-BE': ['Glen De Cauwsemaecker', 'Ruben Vereecken']        # Nederlands (België), Dutch (Belgium)
@@ -82,11 +82,11 @@ module.exports = class DiplomatView extends ContributeClassView
     sl: []             # slovenščina, Slovene
     fi: []             # suomi, Finnish
     bg: []             # български език, Bulgarian
-    nb: ['bardeh', 'ebirkenes', 'matifol', 'mcclane654', 'mogsie', 'torehaug']             # Norsk Bokmål, Norwegian (Bokmål)
-    nn: []             # Norsk Nynorsk, Norwegian (Nynorsk)
+    nb: ['bardeh', 'ebirkenes', 'matifol', 'mcclane654', 'mogsie', 'torehaug', 'AnitaOlsen']             # Norsk Bokmål, Norwegian (Bokmål)
+    nn: ['Ayexa']             # Norsk Nynorsk, Norwegian (Nynorsk)
     he: ['OverProgram', 'monetita']             # עברית, Hebrew
     lt: []             # lietuvių kalba, Lithuanian
-    sr: []             # српски, Serbian
+    sr: ['Vitalije']             # српски, Serbian
     uk: ['ImmortalJoker', 'OlenaGapak', 'Rarst', 'endrilian', 'fess89', 'gorodsb', 'probil', 'CatSkald']             # українська, Ukrainian
     hi: []             # मानक हिन्दी, Hindi
     ur: []             # اُردُو, Urdu
@@ -102,4 +102,5 @@ module.exports = class DiplomatView extends ContributeClassView
     mi: []             # te reo Māori, Māori
     haw: []            # ʻŌlelo Hawaiʻi, Hawaiian
     kk: []            # қазақ тілі, Kazakh
+    az: []             # azərbaycan dili, Azerbaijani
     fil: ['Celestz'] #Like This?

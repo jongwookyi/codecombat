@@ -7,7 +7,6 @@ Handler = require '../commons/Handler'
 {handlers} = require '../commons/mapping'
 mongoose = require 'mongoose'
 log = require 'winston'
-sendwithus = require '../sendwithus'
 slack = require '../slack'
 config = require '../../server_config'
 request = require 'request'
@@ -89,6 +88,21 @@ PaymentHandler = class PaymentHandler extends Handler
 
     if (not req.user) or req.user.isAnonymous()
       return @sendForbiddenError(res)
+
+    if pathName is 'admin'
+      return @sendForbiddenError(res) unless req.user?.isAdmin()
+      payment = new Payment()
+      for key, val of req.body
+        if key in ['purchaser', 'recipient']
+          payment.set key, mongoose.Types.ObjectId(val)
+        else if key in ['gems', 'amount']
+          payment.set key, parseInt(val)
+        else
+          payment.set key, val
+      payment.save (err) =>
+        return @sendDatabaseError(res, err) if err
+        return @sendCreated(res, @formatEntity(req, payment))
+      return
 
     appleReceipt = req.body.apple?.rawReceipt
     appleTransactionID = req.body.apple?.transactionID
@@ -181,7 +195,6 @@ PaymentHandler = class PaymentHandler extends Handler
               if err
                 @logPaymentError(req, 'Apple incr db error.'+err)
                 return @sendDatabaseError(res, err)
-              @sendPaymentSlackMessage user: req.user, payment: payment
               @sendCreated(res, @formatEntity(req, payment))
             )
           )
@@ -273,7 +286,6 @@ PaymentHandler = class PaymentHandler extends Handler
               if err
                 @logPaymentError(req, 'Stripe recalc db error. '+err)
                 return @sendDatabaseError(res, err)
-              @sendPaymentSlackMessage user: req.user, payment: payment
               @sendSuccess(res, @formatEntity(req, payment))
           )
       )
@@ -336,7 +348,6 @@ PaymentHandler = class PaymentHandler extends Handler
         if err
           @logPaymentError(req, 'Stripe incr db error. '+err)
           return @sendDatabaseError(res, err)
-        @sendPaymentSlackMessage user: req.user, payment: payment
         @sendCreated(res, @formatEntity(req, payment))
       )
     )
@@ -382,7 +393,7 @@ PaymentHandler = class PaymentHandler extends Handler
   incrementGemsFor: (user, gems, done) ->
     if not gems
       return done()
-      
+
     purchased = _.clone(user.get('purchased'))
     if not purchased?.gems
       purchased ?= {}

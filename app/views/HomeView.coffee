@@ -33,6 +33,7 @@ module.exports = class HomeView extends RootView
     'click .setup-class-btn': 'onClickSetupClass'
     'click .my-classes-btn': 'onClickMyClassesButton'
     'click .resource-btn': 'onClickResourceButton'
+    'click a': 'onClickAnchor'
 
   shortcuts:
     'right': 'onRightPressed'
@@ -59,10 +60,6 @@ module.exports = class HomeView extends RootView
   onLoaded: ->
     @trialRequest = @trialRequests.first() if @trialRequests?.size()
     @isTeacherWithDemo = @trialRequest and @trialRequest.get('status') in ['approved', 'submitted']
-    if /sunburst/.test(location.pathname) and me.isAnonymous()
-      storage = require 'core/storage'
-      storage.save('referredBySunburst', true)
-      @openModalView(new CreateAccountModal({startOnPath: 'teacher'}))
     super()
 
   onClickOpenVideoButton: (event) ->
@@ -116,9 +113,21 @@ module.exports = class HomeView extends RootView
     e.preventDefault()
     window.tracker?.trackEvent $(e.target).data('event-action'), category: 'Homepage', []
 
+  onClickAnchor: (e) ->
+    return unless anchor = e?.currentTarget
+    # Track an event with action of the English version of the link text
+    translationKey = $(anchor).attr('data-i18n')
+    translationKey ?= $(anchor).children('[data-i18n]').attr('data-i18n')
+    if translationKey
+      anchorText = $.i18n.t(translationKey, {lng: 'en-US'})
+    else
+      anchorText = anchor.text
+    if anchorText
+      window.tracker?.trackEvent "Link: #{anchorText}", category: 'Homepage', ['Google Analytics']
+
   afterRender: ->
     require.ensure(['@vimeo/player'], (require) =>
-      Player = require('@vimeo/player')
+      Player = require('@vimeo/player').default
       @vimeoPlayer = new Player(@$('.vimeo-player')[0])
     , (e) =>
       console.log e

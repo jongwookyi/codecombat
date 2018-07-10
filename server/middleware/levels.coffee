@@ -16,7 +16,7 @@ log = require 'winston'
 
 module.exports =
   upsertSession: wrap (req, res) ->
-    level = yield database.getDocFromHandle(req, Level)
+    level = yield database.getDocFromHandle(req, Level)  # TODO: project only fields we need?
     if not level
       throw new errors.NotFound('Level not found.')
     levelOriginal = level.get('original')
@@ -58,6 +58,17 @@ module.exports =
     if session
       return res.send(session.toObject({req: req}))
 
+    mirrorMatches = ['ace-of-coders', 'elemental-wars', 'the-battle-of-sky-span', 'tesla-tesoro', 'escort-duty', 'treasure-games']
+    if sessionQuery.team and level.get('slug') in mirrorMatches
+      # Find their other session for this, so that if it exists, we can initialize the new team's session with the mirror code.
+      otherTeam = if sessionQuery.team is 'humans' then 'ogres' else 'humans'
+      otherSessionQuery = _.defaults {team: otherTeam, code: {$exists: true}}, sessionQuery
+      otherSession = yield LevelSession.findOne(otherSessionQuery).select('team code codeLanguage')
+      if otherSession
+        heroSlugs = humans: 'hero-placeholder', ogres: 'hero-placeholder-1'
+        code = {}
+        code[heroSlugs[sessionQuery.team]] = plan: otherSession.get('code')[heroSlugs[otherSession.get('team')]].plan
+
     attrs = sessionQuery
     _.extend(attrs, {
       state:
@@ -68,10 +79,15 @@ module.exports =
         {target: req.user.id, access: 'owner'}
         {target: 'public', access: 'write'}
       ]
-      codeLanguage: req.user.get('aceConfig')?.language ? 'python'
+      codeLanguage: otherSession?.get('codeLanguage') ? req.user.get('aceConfig')?.language ? 'python'
     })
+    if code
+      attrs.code = code
 
-    if level.get('type') in ['course', 'course-ladder'] or req.query.course?
+    if not req.user.isAnonymous() and level.get('slug') in ['treasure-games', 'escort-duty', 'tesla-tesoro', 'elemental-wars']
+      console.log "Allowing session creation for #{level.get('slug')} outside of any course"
+      attrs.isForClassroom = true
+    else if level.get('type') in ['course', 'course-ladder'] or req.query.course?
 
       # Find the course and classroom that has assigned this level, verify access
       # Handle either being given the courseInstance, or having to deduce it
@@ -131,7 +147,7 @@ module.exports =
         query = {
           _id: mongoose.Types.ObjectId(req.query.campaign),
           type: 'hoc'
-          "levels.#{level.get('original')}": {$exists: true} 
+          "levels.#{level.get('original')}": {$exists: true}
         }
         campaign = yield Campaign.count(query)
         if campaign
@@ -140,7 +156,7 @@ module.exports =
       if requiresSubscription and not canPlayAnyway
         throw new errors.PaymentRequired('This level requires a subscription to play')
 
-    attrs.isForClassroom = course?
+    attrs.isForClassroom ?= course?
     session = new LevelSession(attrs)
     if classroom # Potentially set intercom trigger flag on teacher
       teacher = yield User.findOne({ _id: classroom.get('ownerID') })
@@ -151,29 +167,26 @@ module.exports =
 # Notes on the teacher object that the relevant intercom trigger should be activated.
 reportLevelStarted = co.wrap ({teacher, level}) ->
   intercom = require('../lib/intercom')
-  if level.get('slug') is 'wakka-maul'
-    yield teacher.update({ $set: { "studentMilestones.studentStartedWakkaMaul": true } })
-    update = {
-      user_id: teacher.get('_id') + '',
-      email: teacher.get('email'),
-      custom_attributes:
-        studentStartedWakkaMaul: true
-    }
-  if level.get('slug') is 'a-mayhem-of-munchkins'
-    yield teacher.update({ $set: { "studentMilestones.studentStartedMayhemOfMunchkins": true } })
-    update = {
-      user_id: teacher.get('_id') + '',
-      email: teacher.get('email'),
-      custom_attributes:
-        studentStartedMayhemOfMunchkins: true
-    }
-  if update
-    tries = 0
-    while tries < 100
-      tries += 1
-      try
-        yield intercom.users.create update
-        return
-      catch e
-        yield new Promise (accept, reject) -> setTimeout(accept, 1000)
-    log.error "Couldn't update intercom for user #{teacher.get('email')} in 100 tries"
+  return unless level.get('slug') in ['wakka-maul', 'a-mayhem-of-munchkins', 'dungeons-of-kithgard', 'true-names', 'throwing-fire', 'over-the-garden-wall', 'humble-beginnings', 'defense-of-plainswood', 'guard-duty', 'javascript-true-names', 'query-confirmed', 'friend-and-foe', 'the-rule-of-the-square', 'dust', 'vital-powers', 'misty-island-mine', 'queue-manager']
+  levelVariable = level.get('slug').replace(/(?:^|\s|-)\S/g, (c) -> c.toUpperCase()).replace(/-/g, '')
+  levelVariable = level.replace 'AMayhemOfMunchkins', 'MayhemOfMunchkins'  # inconsistent variable name
+  update =
+      user_id: teacher.get('_id') + ''
+      email: teacher.get('email')
+      custom_attributes: {}
+  if levelVariable in ['WakkaMaul', 'MayhemOfMunchkins']
+    update.custom_attributes['studentStarted' + levelVariable] = true
+    yield teacher.update({ $set: { "studentMilestones.studentStarted#{levelVariable}": true } })
+  else
+    update.custom_attributes['studentsStarted' + levelVariable] = (teacher.studentMilestones?["studentsStarted#{levelVariable}"] ? 0) + 1
+    yield teacher.update({ $inc: { "studentMilestones.studentsStarted#{levelVariable}": 1 } })
+
+  tries = 0
+  while tries < 100
+    tries += 1
+    try
+      yield intercom.users.create update
+      return
+    catch e
+      yield new Promise (accept, reject) -> setTimeout(accept, 1000)
+  log.error "Couldn't update intercom for user #{teacher.get('email')} in 100 tries"

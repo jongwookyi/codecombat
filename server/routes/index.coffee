@@ -6,10 +6,13 @@ module.exports.setup = (app) ->
   app.delete('/admin/feature-mode', mw.admin.deleteFeatureMode)
   app.get('/admin/calculate-lines-of-code', mw.admin.calculateLinesOfCode) # For outcomes report
 
+  app.get('/apcsp-files/*', mw.apcsp.getAPCSPFile)
+
   app.all('/api/*', mw.api.clientAuth)
 
   app.get('/api/auth/login-o-auth', mw.auth.loginByOAuthProvider)
 
+  app.post('/api/classrooms', mw.api.postClassroom)
   app.put('/api/classrooms/:handle/members', mw.api.putClassroomMember)
   app.put('/api/classrooms/:classroomHandle/courses/:courseHandle/enrolled', mw.api.putClassroomCourseEnrolled)
   app.get('/api/classrooms/:classroomHandle/members/:memberHandle/sessions', mw.api.getClassroomMemberSessions)
@@ -64,6 +67,8 @@ module.exports.setup = (app) ->
   app.post('/db/achievement/:handle/watchers', mw.patchable.joinWatchers(Achievement))
   app.delete('/db/achievement/:handle/watchers', mw.patchable.leaveWatchers(Achievement))
 
+  AnalyticsLogEvent = require '../models/AnalyticsLogEvent'
+  app.get('/db/analytics.log.event', mw.auth.checkHasPermission(['admin']), mw.rest.get(AnalyticsLogEvent))
   app.post('/db/analytics.log.event/-/log_event',  mw.auth.checkHasUser(), mw.analyticsLogEvents.post)
 
   app.post('/db/analytics_perday/-/active_classes', mw.auth.checkHasPermission(['admin']), mw.analyticsPerDay.getActiveClasses)
@@ -131,7 +136,7 @@ module.exports.setup = (app) ->
   app.put('/db/clan/:handle/remove/:memberHandle', mw.auth.checkLoggedIn(), mw.clans.removeMember)
 
   app.post('/db/classroom', mw.classrooms.post)
-  app.get('/db/classroom', mw.classrooms.fetchByCode, mw.classrooms.getByOwner)
+  app.get('/db/classroom', mw.classrooms.getByCode, mw.classrooms.getByOwner, mw.classrooms.getByMember)
   app.get('/db/classroom/:handle/levels', mw.classrooms.fetchAllLevels)
   app.get('/db/classroom/:handle/courses/:courseID/levels', mw.classrooms.fetchLevelsForCourse)
   app.post('/db/classroom/:handle/invite-members', mw.classrooms.inviteMembers)
@@ -147,8 +152,16 @@ module.exports.setup = (app) ->
   app.get('/db/classroom/-/users', mw.auth.checkHasPermission(['admin']), mw.classrooms.getUsers)
 
   APIClient = require ('../models/APIClient')
-  app.post('/db/api-clients', mw.auth.checkHasPermission(['admin']), mw.rest.post(APIClient))
-  app.post('/db/api-clients/:handle/new-secret', mw.auth.checkHasPermission(['admin']), mw.apiClients.newSecret)
+  app.get('/db/api-clients/name', mw.auth.checkHasPermission(['admin','licensor']), mw.apiClients.getByName)
+  app.get('/db/api-clients', mw.auth.checkHasPermission(['admin','licensor']), mw.rest.get(APIClient))
+  app.post('/db/api-clients', mw.auth.checkHasPermission(['admin','licensor']), mw.apiClients.postClient)
+  app.post('/db/api-clients/:handle/new-secret', mw.auth.checkHasPermission(['admin','licensor']), mw.apiClients.newSecret)
+
+  OAuthProvider = require ('../models/OAuthProvider')
+  app.post('/db/o-auth', mw.auth.checkHasPermission(['admin','licensor']), mw.oauth.postOAuthProvider)
+  app.put('/db/o-auth', mw.auth.checkHasPermission(['admin','licensor']), mw.oauth.putOAuthProvider)
+  app.get('/db/o-auth/name', mw.auth.checkHasPermission(['admin','licensor']), mw.oauth.getOAuthProviderByName)
+  app.get('/db/o-auth', mw.auth.checkHasPermission(['admin','licensor']), mw.rest.get(OAuthProvider))
 
   CodeLog = require ('../models/CodeLog')
   app.post('/db/codelogs', mw.codelogs.post)
@@ -168,12 +181,12 @@ module.exports.setup = (app) ->
 
   app.get('/db/course_instance/-/non-hoc', mw.auth.checkHasPermission(['admin']), mw.courseInstances.fetchNonHoc)
   app.post('/db/course_instance/-/recent', mw.auth.checkHasPermission(['admin']), mw.courseInstances.fetchRecent)
-  app.get('/db/course_instance/:handle/levels/:levelOriginal/sessions/:sessionID/next', mw.courseInstances.fetchNextLevel)
+  app.get('/db/course_instance/:handle/levels/:levelOriginal/sessions/:sessionID/next', mw.courseInstances.fetchNextLevels)
   app.post('/db/course_instance/:handle/members', mw.auth.checkLoggedIn(), mw.courseInstances.addMembers)
   app.delete('/db/course_instance/:handle/members', mw.auth.checkLoggedIn(), mw.courseInstances.removeMembers)
   app.get('/db/course_instance/:handle/classroom', mw.auth.checkLoggedIn(), mw.courseInstances.fetchClassroom)
   app.get('/db/course_instance/:handle/course', mw.auth.checkLoggedIn(), mw.courseInstances.fetchCourse)
-  app.get('/db/course_instance/:handle/my-course-level-sessions', mw.auth.checkLoggedIn(), mw.courseInstances.fetchMyCourseLevelSessions)
+  app.get('/db/course_instance/:handle/course-level-sessions/:userID', mw.auth.checkLoggedIn(), mw.courseInstances.fetchCourseLevelSessions)
   app.get('/db/course_instance/:handle/peer-projects', mw.auth.checkLoggedIn(), mw.courseInstances.fetchPeerProjects)
 
   EarnedAchievement = require '../models/EarnedAchievement'
@@ -200,7 +213,7 @@ module.exports.setup = (app) ->
   app.put('/db/level.session/:handle/key-value-db/:key', mw.levelSessions.putKeyValueDb)
   app.post('/db/level.session/:handle/key-value-db/:key/increment', mw.levelSessions.incrementKeyValueDb)
   app.post('/db/level.session/-/levels-and-students', mw.auth.checkHasPermission(['admin']), mw.levelSessions.byLevelsAndStudents)
-
+  app.post('/db/level.session/short-link', mw.auth.checkHasUser(), mw.levelSessions.shortLink)
 
   LevelSystem = require '../models/LevelSystem'
   app.post('/db/level.system/:handle/patch', mw.auth.checkLoggedIn(), mw.patchable.postPatch(LevelSystem, 'level_system'))
@@ -214,8 +227,11 @@ module.exports.setup = (app) ->
   app.get('/db/users/-/by-age', mw.auth.checkHasPermission(['admin']), mw.users.fetchByAge)
   app.put('/db/user/-/remain-teacher', mw.users.remainTeacher)
   app.get('/db/user/-/lead-priority', mw.auth.checkLoggedIn(), mw.users.getLeadPriority)
+  app.put('/db/user/:handle/verifiedTeacher', mw.auth.checkHasPermission(['admin']), mw.users.setVerifiedTeacher)
   app.post('/db/user/:userID/request-verify-email', mw.users.sendVerificationEmail)
   app.post('/db/user/:userID/verify/:verificationCode', mw.users.verifyEmailAddress) # TODO: Finalize URL scheme
+  app.post('/db/user/:userID/keep-me-updated/:verificationCode', mw.users.keepMeUpdated)
+  app.post('/db/user/:userID/no-delete-eu/:verificationCode', mw.users.noDeleteEU)
   app.get('/db/user/-/students', mw.auth.checkHasPermission(['admin']), mw.users.getStudents)
   app.get('/db/user/-/teachers', mw.auth.checkHasPermission(['admin']), mw.users.getTeachers)
   app.post('/db/user/:handle/check-for-new-achievement', mw.auth.checkLoggedIn(), mw.users.checkForNewAchievement)
@@ -225,12 +241,14 @@ module.exports.setup = (app) ->
   app.post('/db/user/:handle/paypal/execute-billing-agreement', mw.auth.checkLoggedIn(), mw.subscriptions.executePayPalBillingAgreement)
   app.post('/db/user/:handle/paypal/cancel-billing-agreement', mw.auth.checkLoggedIn(), mw.subscriptions.cancelPayPalBillingAgreement)
   app.post('/db/user/:handle/reset_progress', mw.users.resetProgress)
+  app.get('/db/user/:handle/export-data', mw.users.exportData)
   app.post('/db/user/:handle/signup-with-facebook', mw.users.signupWithFacebook)
   app.post('/db/user/:handle/signup-with-gplus', mw.users.signupWithGPlus)
   app.post('/db/user/:handle/signup-with-password', mw.users.signupWithPassword)
   app.delete('/db/user/:handle/stripe/recipients/:recipientHandle', mw.auth.checkLoggedIn(), mw.subscriptions.unsubscribeRecipientEndpoint)
   app.get('/db/user/:handle/avatar', mw.users.getAvatar)
   app.get('/db/user/:handle/course-instances', mw.users.getCourseInstances)
+  app.get('/db/user/:handle/name-for-classmate', mw.users.getNameForClassmate)
 
   app.post('/db/patch', mw.patches.post)
   app.put('/db/patch/:handle/status', mw.auth.checkLoggedIn(), mw.patches.setStatus)
@@ -242,12 +260,13 @@ module.exports.setup = (app) ->
   app.post('/db/poll/:handle/patch', mw.auth.checkLoggedIn(), mw.patchable.postPatch(Poll, 'poll'))
   app.get('/db/poll/:handle/patches', mw.patchable.patches(Poll))
 
+  app.get('/db/prepaid/client', mw.auth.checkHasPermission(['admin','licensor']), mw.prepaids.fetchByClient)
   app.get('/db/prepaid', mw.auth.checkLoggedIn(), mw.prepaids.fetchByCreator)
   app.get('/db/prepaid/:handle/creator', mw.prepaids.fetchCreator)
   app.get('/db/prepaid/:handle/joiners', mw.prepaids.fetchJoiners)
   app.get('/db/prepaid/-/active-school-licenses', mw.auth.checkHasPermission(['admin']), mw.prepaids.fetchActiveSchoolLicenses)
   app.get('/db/prepaid/-/active-schools', mw.auth.checkHasPermission(['admin']), mw.prepaids.fetchActiveSchools)
-  app.post('/db/prepaid', mw.auth.checkHasPermission(['admin']), mw.prepaids.post)
+  app.post('/db/prepaid', mw.auth.checkHasPermission(['admin','licensor']), mw.prepaids.post)
   app.post('/db/starter-license-prepaid', mw.auth.checkLoggedIn(), mw.prepaids.purchaseStarterLicenses)
   app.post('/db/prepaid/:handle/redeemers', mw.prepaids.redeem)
   app.post('/db/prepaid/:handle/joiners', mw.prepaids.addJoiner)
@@ -279,3 +298,5 @@ module.exports.setup = (app) ->
   app.all('/headers', mw.headers)
 
   app.get('/healthcheck', mw.healthcheck.healthcheckRoute)
+
+  app.post('/webhooks/intercom', mw.intercom.webhook)

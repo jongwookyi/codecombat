@@ -3,6 +3,9 @@
 # Sort according to language popularity on Internet
 # http://en.wikipedia.org/wiki/Languages_used_on_the_Internet
 
+utils = require('../core/utils')
+
+
 module.exports =
   'en': require('./en') # Include these in the main bundle
   'en-US': require('./en-US')
@@ -13,8 +16,11 @@ module.exports =
   'es-ES': { nativeDescription: 'español (ES)', englishDescription: 'Spanish (Spain)' }
   'es-419': { nativeDescription: 'español (América Latina)', englishDescription: 'Spanish (Latin America)' }
   'fr': { nativeDescription: 'français', englishDescription: 'French' }
+  'pt-PT': { nativeDescription: 'Português (Portugal)', englishDescription: 'Portuguese (Portugal)' }
+  'pt-BR': { nativeDescription: 'Português (Brasil)', englishDescription: 'Portuguese (Brazil)' }
   # Begin alphabetized list: https://github.com/codecombat/codecombat/issues/2329#issuecomment-74630546
   'ar': { nativeDescription: 'العربية', englishDescription: 'Arabic' }
+  'az': { nativeDescription: 'azərbaycan dili', englishDescription: 'Azerbaijani' }
   'bg': { nativeDescription: 'български език', englishDescription: 'Bulgarian' }
   'ca': { nativeDescription: 'Català', englishDescription: 'Catalan' }
   'cs': { nativeDescription: 'čeština', englishDescription: 'Czech' }
@@ -50,8 +56,6 @@ module.exports =
   'nn': { nativeDescription: 'Norsk Nynorsk', englishDescription: 'Norwegian (Nynorsk)' }
   'uz': { nativeDescription: "O'zbekcha", englishDescription: 'Uzbek' }
   'pl': { nativeDescription: 'język polski', englishDescription: 'Polish' }
-  'pt-PT': { nativeDescription: 'Português (Portugal)', englishDescription: 'Portuguese (Portugal)' }
-  'pt-BR': { nativeDescription: 'Português (Brasil)', englishDescription: 'Portuguese (Brazil)' }
   'ro': { nativeDescription: 'limba română', englishDescription: 'Romanian' }
   'sr': { nativeDescription: 'српски', englishDescription: 'Serbian' }
   'sk': { nativeDescription: 'slovenčina', englishDescription: 'Slovak' }
@@ -71,12 +75,15 @@ Object.defineProperties module.exports,
   load:
     enumerable: false
     value: (langCode) ->
+      return Promise.resolve() if langCode in ['en', 'en-US']
       console.log "Loading locale:", langCode
       promises = [
         new Promise (accept, reject) ->
           require('bundle-loader?lazy&name=[name]!locale/'+langCode)((localeData) -> accept(localeData))
         .then (localeData) =>
           @storeLoadedLanguage(langCode, localeData)
+        .catch (error) =>
+          console.error "Error loading locale '#{langCode}':\n", error
       ]
       firstBit = langCode[...2]
       if (firstBit isnt langCode) and @[firstBit]?
@@ -84,6 +91,8 @@ Object.defineProperties module.exports,
           require('bundle-loader?lazy&name=locale/[name]!locale/'+firstBit)((localeData) -> accept(localeData))
         .then (localeData) =>
           @storeLoadedLanguage(firstBit, localeData)
+        .catch (error) =>
+          console.error "Error loading locale '#{firstBit}':\n", error
         )
       return Promise.all(promises)
 
@@ -134,6 +143,10 @@ Object.defineProperties module.exports,
             opts.ns = ns
           Vue.util.extend opts, options
           i18n.t key, opts
+
+        Vue::$dbt = (source, key, options) ->
+          options ?= {}
+          utils.i18n(source, key, options.language, options.fallback)
 
         return
 

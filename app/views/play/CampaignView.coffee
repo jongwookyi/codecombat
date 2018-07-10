@@ -40,6 +40,7 @@ PlayAchievementsModal = require 'views/play/modal/PlayAchievementsModal'
 BuyGemsModal = require 'views/play/modal/BuyGemsModal'
 ContactModal = require 'views/core/ContactModal'
 AnonymousTeacherModal = require 'views/core/AnonymousTeacherModal'
+AmazonHocModal = require 'views/play/modal/AmazonHocModal'
 require('vendor/scripts/jquery-ui-1.11.1.custom')
 require('vendor/styles/jquery-ui-1.11.1.custom.css')
 fetchJson = require 'core/api/fetch-json'
@@ -52,7 +53,7 @@ class LevelSessionsCollection extends CocoCollection
 
   constructor: (model) ->
     super()
-    @url = "/db/user/#{me.id}/level.sessions?project=state.complete,levelID,state.difficulty,playtime"
+    @url = "/db/user/#{me.id}/level.sessions?project=state.complete,levelID,state.difficulty,playtime,state.topScores,codeLanguage,level"
 
 class CampaignsCollection extends CocoCollection
   # We don't send all of levels, just the parts needed in countLevels
@@ -93,6 +94,7 @@ module.exports = class CampaignView extends RootView
     'click [data-toggle="coco-modal"][data-target="core/ContactModal"]': 'openContactModal'
     'click [data-toggle="coco-modal"][data-target="core/CreateAccountModal"]': 'openCreateAccountModal'
     'click [data-toggle="coco-modal"][data-target="core/AnonymousTeacherModal"]': 'openAnonymousTeacherModal'
+    'click #amazon-campaign-logo': 'onClickAmazonCampaign'
 
   shortcuts:
     'shift+s': 'onShiftS'
@@ -107,6 +109,7 @@ module.exports = class CampaignView extends RootView
     @levelStatusMap = {}
     @levelPlayCountMap = {}
     @levelDifficultyMap = {}
+    @levelScoreMap = {}
 
     if utils.getQueryVariable('hour_of_code')
       if me.isStudent() or me.isTeacher()
@@ -149,7 +152,7 @@ module.exports = class CampaignView extends RootView
       @supermodel.addRequestResource(url: '/picoctf/problems', success: (@picoCTFProblems) =>).load()
     else
       unless @editorMode
-        @sessions = @supermodel.loadCollection(new LevelSessionsCollection(), 'your_sessions', {cache: false}, 0).model
+        @sessions = @supermodel.loadCollection(new LevelSessionsCollection(), 'your_sessions', {cache: false}, 1).model
         @listenToOnce @sessions, 'sync', @onSessionsLoaded
       unless @terrain
         @campaigns = @supermodel.loadCollection(new CampaignsCollection(), 'campaigns', null, 1).model
@@ -191,18 +194,18 @@ module.exports = class CampaignView extends RootView
           @supermodel.trackRequest @classroom.fetch()
           @listenToOnce @classroom, 'sync', =>
             @courseInstance.sessions = new CocoCollection([], {
-              url: @courseInstance.url() + '/my-course-level-sessions',
+              url: @courseInstance.url() + '/course-level-sessions/' + me.id,
               model: LevelSession
             })
             @supermodel.loadCollection(@courseInstance.sessions, {
-              data: { project: 'state.complete,level.original,playtime,changed' }
+              data: { project: 'state.complete,level.original,playtime,changed,state.topScores' }
             })
             @courseInstance.sessions.comparator = 'changed'
             @listenToOnce @courseInstance.sessions, 'sync', =>
               @courseStats = @classroom.statsForSessions(@courseInstance.sessions, @course.id)
             @courseLevels = new Levels()
             @supermodel.trackRequest @courseLevels.fetchForClassroomAndCourse(classroomID, courseID, {
-              data: { project: 'concepts,practice,primerLanguage,type,slug,name,original,description,shareable,i18n' }
+              data: { project: 'concepts,practice,assessment,primerLanguage,type,slug,name,original,description,shareable,i18n' }
             })
             @listenToOnce @courseLevels, 'sync', =>
               existing = @campaign.get('levels')
@@ -309,6 +312,11 @@ module.exports = class CampaignView extends RootView
   openAnonymousTeacherModal: (e) ->
     e.stopPropagation()
     @openModalView new AnonymousTeacherModal()
+    @endHighlight()
+
+  onClickAmazonCampaign: (e) ->
+    window.tracker?.trackEvent 'Click Amazon Modal Button'
+    @openModalView new AmazonHocModal hideCongratulation: true
 
   getLevelPlayCounts: ->
     return unless me.isAdmin()
@@ -329,6 +337,25 @@ module.exports = class CampaignView extends RootView
     levelPlayCountsRequest.load()
 
   onLoaded: ->
+    if @classroom
+      classroomLevels = @classroom.getLevels()
+      classroomLevelMap = _.zipObject(classroomLevels.map((l) -> l.get('original')), classroomLevels.models)
+      defaultLanguage = @classroom.get('aceConfig').language
+      for session in @sessions.slice()
+        classroomLevel = classroomLevelMap[session.get('level').original]
+        if not classroomLevel
+          continue
+        expectedLanguage = classroomLevel.get('primerLanguage') or defaultLanguage
+        if session.get('codeLanguage') isnt expectedLanguage
+          @sessions.remove(session)
+          continue
+    unless @editorMode
+      for session in @sessions.models
+        unless @levelStatusMap[session.get('levelID')] is 'complete'  # Don't overwrite a complete session with an incomplete one
+          @levelStatusMap[session.get('levelID')] = if session.get('state')?.complete then 'complete' else 'started'
+        @levelDifficultyMap[session.get('levelID')] = session.get('state').difficulty if session.get('state')?.difficulty
+
+    @buildLevelScoreMap() unless @editorMode
     # HoC: Fake us up a "mode" for HeroVictoryModal to return hero without levels realizing they're in a copycat campaign, or clear it if we started playing.
     application.setHocCampaign(if @campaign?.get('type') is 'hoc' then @campaign.get('slug') else '')
 
@@ -346,7 +373,7 @@ module.exports = class CampaignView extends RootView
           @openModalView new CodePlayCreateAccountModal()
       else if me.get('anonymous') and me.get('lastLevel') is 'shadow-guard' and me.level() < 4 and not features.noAuth
         @promptForSignup()
-      else if me.get('name') and me.get('lastLevel') in ['forgetful-gemsmith', 'signs-and-portents'] and
+      else if me.get('name') and me.get('lastLevel') in ['forgetful-gemsmith', 'signs-and-portents', 'true-names'] and
       me.level() < 5 and not (me.get('ageRange') in ['18-24', '25-34', '35-44', '45-100']) and
       not storage.load('sent-parent-email') and not me.isPremium()
         @openModalView new ShareProgressModal()
@@ -355,6 +382,16 @@ module.exports = class CampaignView extends RootView
 
     # Minecraft Modal:
     #@maybeShowMinecraftModal() # Disable for now
+
+  buildLevelScoreMap: ->
+    for session in @sessions.models
+      levels = @getLevels()
+      return unless levels
+      levelOriginal = session.get('level')?.original
+      continue unless levelOriginal
+      level = levels[levelOriginal]
+      topScore = _.first(LevelSession.getTopScores({session: session.toJSON(), level}))
+      @levelScoreMap[levelOriginal] = topScore
 
   # Minecraft Modal:
   maybeShowMinecraftModal: ->
@@ -678,11 +715,13 @@ module.exports = class CampaignView extends RootView
           level.color = 'rgb(255, 80, 60)'
           return
 
-    findNextLevel = (nextLevels, practiceOnly) =>
-      for nextLevelOriginal in nextLevels
+    findNextLevel = (level, practiceOnly) =>
+      for nextLevelOriginal in level.nextLevels
         nextLevel = _.find orderedLevels, original: nextLevelOriginal
         continue if not nextLevel or nextLevel.locked
         continue if practiceOnly and not @campaign.levelIsPractice(nextLevel)
+        continue if @campaign.levelIsAssessment(nextLevel)
+        continue if @campaign.levelIsAssessment(level) and @campaign.levelIsPractice(nextLevel)
 
         # If it's a challenge level, we efficiently determine whether we actually do want to point it out.
         if nextLevel.slug is 'kithgard-mastery' and not @levelStatusMap[nextLevel.slug] and @calculateExperienceScore() >= 3
@@ -713,8 +752,8 @@ module.exports = class CampaignView extends RootView
           break unless nextLevel.practice
       else
         level.nextLevels = (reward.level for reward in level.rewards ? [] when reward.level)
-      foundNext = findNextLevel(level.nextLevels, true) unless foundNext # Check practice levels first
-      foundNext = findNextLevel(level.nextLevels, false) unless foundNext
+      foundNext = findNextLevel(level, true) unless foundNext or @campaign.levelIsAssessment(level) # Check practice levels first
+      foundNext = findNextLevel(level, false) unless foundNext
 
     if not foundNext and orderedLevels[0] and not orderedLevels[0].locked and @levelStatusMap[orderedLevels[0].slug] isnt 'complete'
       orderedLevels[0].next = true
@@ -772,7 +811,7 @@ module.exports = class CampaignView extends RootView
     @particleMan.removeEmitters()
     @particleMan.attach @$el.find('.map')
     for level in @campaign.renderedLevels ? {}
-      continue if level.hidden and (@campaign.levelIsPractice(level) or not level.unlockedInSameCampaign)
+      continue if level.hidden and (@campaign.levelIsPractice(level) or @campaign.levelIsAssessment(level) or not level.unlockedInSameCampaign)
       terrain = @terrain.replace('-branching-test', '').replace(/(campaign-)?(game|web)-dev-\d/, 'forest').replace(/(intro|game-dev-hoc)/, 'dungeon')
       particleKey = ['level', terrain]
       particleKey.push level.type if level.type and not (level.type in ['hero', 'course'])  # Would use isType, but it's not a Level model
@@ -814,12 +853,8 @@ module.exports = class CampaignView extends RootView
 
   onSessionsLoaded: (e) ->
     return if @editorMode
-    for session in @sessions.models
-      unless @levelStatusMap[session.get('levelID')] is 'complete'  # Don't overwrite a complete session with an incomplete one
-        @levelStatusMap[session.get('levelID')] = if session.get('state')?.complete then 'complete' else 'started'
-      @levelDifficultyMap[session.get('levelID')] = session.get('state').difficulty if session.get('state')?.difficulty
     @render()
-    @loadUserPollsRecord() unless me.get('anonymous') or window.serverConfig.picoCTF
+    @loadUserPollsRecord() unless me.get('anonymous') or me.inEU() or window.serverConfig.picoCTF
 
   onCampaignsLoaded: (e) ->
     @render()
@@ -1210,11 +1245,11 @@ module.exports = class CampaignView extends RootView
     if latest > myLatest or not myLatest?
       me.set('lastAnnouncementSeen', latest)
       me.save()
-      window.tracker?.trackEvent 'Show announcement modal', label: latest
+      window.tracker?.trackEvent 'Show announcement modal', label: latest + ''
       @openModalView new AnnouncementModal({announcementId: latest})
 
   onClickBrainPopReplayButton: ->
-    api.users.resetProgress().then(=> document.location.reload())
+    api.users.resetProgress({userId: me.id}).then(=> document.location.reload())
 
   getLevels: () ->
     return @courseLevelsFake if @courseLevels?
@@ -1228,6 +1263,7 @@ module.exports = class CampaignView extends RootView
     courseOrder = _.sortBy orderedLevels, 'courseIdx'
     found = false
     prev = null
+    lastNormalLevel = null
     for level, levelIndex in courseOrder
       playerState = @levelStatusMap[level.slug]
       level.color = 'rgb(255, 80, 60)'
@@ -1252,15 +1288,27 @@ module.exports = class CampaignView extends RootView
           else
             level.hidden = true
             level.locked = true
+        else if level.assessment
+          level.hidden = false
+          level.locked = @levelStatusMap[lastNormalLevel?.slug] isnt 'complete'
         else
           level.locked = found
           level.hidden = false
 
-      level.color = 'rgb(193, 193, 193)' if level.locked
       level.noFlag = !level.next
+      if level.locked
+        level.color = 'rgb(193, 193, 193)'
+      else if level.practice
+        level.color = 'rgb(45, 145, 81)'
+      else if level.assessment
+        level.color = '#AD62F8'
+        if playerState isnt 'complete'
+          level.noFlag = false
       level.unlocksHero = false
       level.unlocksItem = false
       prev = level
+      if not @campaign.levelIsPractice(level) and not @campaign.levelIsAssessment(level)
+        lastNormalLevel = level
     return true
 
   shouldShow: (what) ->
@@ -1303,6 +1351,9 @@ module.exports = class CampaignView extends RootView
       return not (me.isPremium() or isIOS or me.freeOnly() or isStudentOrTeacher or (application.getHocCampaign() and me.isAnonymous()))
 
     if what in ['teacher-button']
-      return me.isAnonymous() and me.level() < 15 and new Date() < new Date(2017, 11, 9)
+      return me.isAnonymous() and me.level() < 8 and me.get('preferredLanguage', true) is 'en-US'
+
+    if what is 'amazon-campaign'
+      return @campaign?.get('slug') is 'game-dev-hoc'
 
     return true
